@@ -1,0 +1,206 @@
+Team -5 
+Name - Mayur Khandave  ASU ID - 1215090188
+Name - Bhupinder Singh   ASU ID - 1215098443
+
+How To Run -
+
+
+1) Copy the patch file in the kernel source
+2) Run patch -p1 < patch.file at kernel source
+3) Then build the kernel
+	1)Include the cross-compilation tools in your PATH:
+		export PATH=path_to_sdk/sysroots/x86_64-pokysdk-linux/usr/bin/i586-poky-linux:$PATH
+
+	2) Make menuconfig
+
+		select kernel hacking 
+
+		Enable dynamic dump stack
+
+		press y
+
+		click save
+
+		exit from the menuconfig
+
+	3)ARCH=x86 LOCALVERSION= CROSS_COMPILE=i586-poky-linux- make -j4
+
+	4)copy bzImage from  arch/x86/boot/bzImage to SD card
+
+4) Plug in the SD card to board and reboot
+
+
+How to run test programs
+
+
+1) make
+2) It will create two files - insdump_tester rmdump_tester
+3) sudo scp insdump_tester rmdump_tester  BOARD_IP:/home/root
+4) Now on the Galilieo Board -
+	1) ./indump_tester
+		This will ask you to enter the Dump Stack mode(inter value)
+	) ./rmdump_tester
+		This will ask you to enter the Dump Stack mode(inter value)
+
+Note - if compilation fails for the above command saying linux/dynamic_dump_stack.h not found
+we need to add the file at /opt/iot-devkit/1.7.2/sysroots/i586-poky-linux/usr/src/kernel/include/linux/dynamic_dump_stack.h
+from KERNEL_SOURCE/include/linux/dynamic_dump_stack.h
+
+
+
+OUTPUT --
+
+
+./insdump_tester  
+Please enter dump stack mode:-1
+DUMPSTACKID 10
+IN CHILD: OPENING FILE
+TRYING TO REMOVE DUMPSTACKID 10
+OPENING THE FILE
+ERROR WHILE REMOVING THE DUMPSTACK
+OPENING THE FILE
+
+
+
+DMESG -
+
+IN THE SYSCALL INSDUMP
+[ 2777.354362] SYMOBOL FOUND! ADDING THE KRPOBE
+[ 2777.360231] DUMPSTACK MODE IS - 0
+[ 2777.363922] KPROBE INSERTED
+[ 2777.379713] IN THE SYSCALL RMDUMP
+[ 2777.383219] DUMPSTACK NOT FOUND
+[ 2777.389011] PROCESS 396 IS EXITED. REMOVING THE KRPOBES
+[ 2777.394445] REMOVED THE KRPOBES
+[ 2777.403732] PROCESS 394 IS EXITED. REMOVING THE KRPOBES
+[ 2777.409034] REMOVED THE KRPOBES
+[ 2777.414706] PROCESS 397 IS EXITED. REMOVING THE KRPOBES
+[ 2777.420281] REMOVED THE KRPOBES
+[ 2777.432652] PROCESS 395 IS EXITED. REMOVING THE KRPOBES
+[ 2777.438124] REMOVED THE KRPOBES
+
+
+root@quark:~# ./insdump_tester 
+Please enter dump stack mode:-1
+DUMPSTACKID 13
+IN CHILD: OPENING FILE
+TRYING TO REMOVE DUMPSTACKID 13
+ERROR WHILE REMOVING THE DUMPSTACK
+OPENING THE FILE
+OPENING THE FILE
+
+
+DMESG -
+
+IN THE SYSCALL INSDUMP
+[ 2830.788951] SYMOBOL FOUND! ADDING THE KRPOBE
+[ 2830.795584] DUMPSTACK MODE IS - 1
+[ 2830.799273] KPROBE INSERTED
+[ 2830.811185] IN THE SYSCALL RMDUMP
+[ 2830.814758] DUMPSTACK NOT FOUND
+[ 2830.823677] CPU: 0 PID: 401 Comm: insdump_tester Not tainted 3.19.8-yocto-standard #49
+[ 2830.830054] Hardware name: Intel Corp. QUARK/GalileoGen2, BIOS 0x01000200 01/01/2014
+[ 2830.830054]  0000018f 0000018f cd40ff20 c1453971 cd40ff2c c124ceba ce638b6c cd40ff44
+[ 2830.830054]  c10a27d2 ce638b74 cd40ff74 cd78fd80 c111af21 cd40ff5c c1027fa4 c111af20
+[ 2830.830054]  cd40ff74 00000000 b7722b40 cd40ff6c c1002964 08048965 00000000 cd40e000
+[ 2830.830054] Call Trace:
+[ 2830.830054]  [<c1453971>] dump_stack+0x16/0x18
+[ 2830.830054]  [<c124ceba>] Pre_Handler+0x4a/0x50
+[ 2830.830054]  [<c10a27d2>] aggr_pre_handler+0x32/0x70
+[ 2830.830054]  [<c111af21>] ? SyS_open+0x1/0x20
+[ 2830.830054]  [<c1027fa4>] kprobe_int3_handler+0xb4/0x130
+[ 2830.830054]  [<c111af20>] ? do_sys_open+0x210/0x210
+[ 2830.830054]  [<c1002964>] do_int3+0x44/0xa0
+[ 2830.830054]  [<c1457ed3>] int3+0x33/0x40
+[ 2830.830054]  [<c111007b>] ? unuse_mm+0x1cb/0x420
+[ 2830.830054]  [<c111af21>] ? SyS_open+0x1/0x20
+[ 2830.830054]  [<c1457384>] ? syscall_call+0x7/0x7
+[ 2830.930768] PROCESS 402 IS EXITED. REMOVING THE KRPOBES
+[ 2830.936038] REMOVED THE KRPOBES
+[ 2830.939490] PROCESS 400 IS EXITED. REMOVING THE KRPOBES
+[ 2830.944866] REMOVED THE KRPOBES
+[ 2830.948348] PROCESS 401 IS EXITED. REMOVING THE KRPOBES
+[ 2830.953723] REMOVED THE KRPOBES
+[ 2830.961158] PROCESS 399 IS EXITED. REMOVING THE KRPOBES
+[ 2830.966447] REMOVED THE KRPOBES
+
+
+
+root@quark:~# ./insdump_tester 
+Please enter dump stack mode:-2
+DUMPSTACKID 14
+IN CHILD: OPENING FILE
+OPENING THE FILE
+root@quark:~# TRYING TO REMOVE DUMPSTACKID 14
+ERROR WHILE REMOVING THE DUMPSTACK
+OPENING THE FILE
+
+
+[ 2866.911635] IN THE SYSCALL INSDUMP
+[ 2866.926443] SYMOBOL FOUND! ADDING THE KRPOBE
+[ 2866.932166] DUMPSTACK MODE IS - 2
+[ 2866.935855] KPROBE INSERTED
+[ 2866.949501] CPU: 0 PID: 405 Comm: insdump_tester Not tainted 3.19.8-yocto-standard #49
+[ 2866.950051] Hardware name: Intel Corp. QUARK/GalileoGen2, BIOS 0x01000200 01/01/2014
+[ 2866.950051]  00000195 00000195 cd40ff20 c1453971 cd40ff2c c124ceba ce64462c cd40ff44
+[ 2866.950051]  c10a27d2 ce644634 cd40ff74 cd5ed4e0 c111af21 cd40ff5c c1027fa4 c111af20
+[ 2866.950051]  cd40ff74 00000000 080485d0 cd40ff6c c1002964 080489ea 00000001 cd40e000
+[ 2866.950051] Call Trace:
+[ 2866.950051]  [<c1453971>] dump_stack+0x16/0x18
+[ 2866.950051]  [<c124ceba>] Pre_Handler+0x4a/0x50
+[ 2866.950051]  [<c10a27d2>] aggr_pre_handler+0x32/0x70
+[ 2866.950051]  [<c111af21>] ? SyS_open+0x1/0x20
+[ 2866.950051]  [<c1027fa4>] kprobe_int3_handler+0xb4/0x130
+[ 2866.950051]  [<c111af20>] ? do_sys_open+0x210/0x210
+[ 2866.950051]  [<c1002964>] do_int3+0x44/0xa0
+[ 2866.950051]  [<c1457ed3>] int3+0x33/0x40
+[ 2866.950051]  [<c111af21>] ? SyS_open+0x1/0x20
+[ 2866.950051]  [<c1450060>] ? netlbl_cipsov4_add+0x440/0x780
+[ 2866.950051]  [<c1457384>] ? syscall_call+0x7/0x7
+[ 2867.045530] CPU: 0 PID: 406 Comm: insdump_tester Not tainted 3.19.8-yocto-standard #49
+[ 2867.053288] Hardware name: Intel Corp. QUARK/GalileoGen2, BIOS 0x01000200 01/01/2014
+[ 2867.053288]  00000194 00000194 cd2f9f3c c1453971 cd2f9f48 c124ceba ce64462c cd2f9f60
+[ 2867.053288]  c10a2772 ce644634 00000246 00000000 b778fb40 cd2f9f6c c102853a 08048965
+[ 2867.053288]  cd2f8000 d28623a9 08048965 00000002 000000e0 00000000 b778fb40 cd2f8000
+[ 2867.053288] Call Trace:
+[ 2867.053288]  [<c1453971>] dump_stack+0x16/0x18
+[ 2867.053288]  [<c124ceba>] Pre_Handler+0x4a/0x50
+[ 2867.053288]  [<c10a2772>] opt_pre_handler+0x32/0x60
+[ 2867.053288]  [<c102853a>] optimized_callback+0x5a/0x70
+[ 2867.053288]  [<c111007b>] ? unuse_mm+0x1cb/0x420
+[ 2867.053288]  [<c111af21>] ? SyS_open+0x1/0x20
+[ 2867.053288]  [<c1457384>] ? syscall_call+0x7/0x7
+[ 2867.152632] PROCESS 406 IS EXITED. REMOVING THE KRPOBES
+[ 2867.157901] REMOVED THE KRPOBES
+[ 2867.163672] PROCESS 404 IS EXITED. REMOVING THE KRPOBES
+[ 2867.168960] REMOVED THE KRPOBES
+[ 2867.179540] IN THE SYSCALL RMDUMP
+[ 2867.183059] DUMPSTACK NOT FOUND
+[ 2867.194021] PROCESS 407 IS EXITED. REMOVING THE KRPOBES
+[ 2867.199495] REMOVED THE KRPOBES
+[ 2867.205225] PROCESS 405 IS EXITED. REMOVING THE KRPOBES
+[ 2867.210643] REMOVED THE KRPOBES
+
+
+
+
+root@quark:~# ./rmdump_tester 
+Please enter dump stack mode:-1
+DUMPSTACKID 15
+DUMPSTACKID 15 is removed
+
+
+DMESG -
+
+IN THE SYSCALL INSDUMP
+[ 2940.034320] SYMOBOL FOUND! ADDING THE KRPOBE
+[ 2940.039953] DUMPSTACK MODE IS - 1
+[ 2940.043753] KPROBE INSERTED
+[ 2940.052751] IN THE SYSCALL RMDUMP
+[ 2940.056317] DUMPSTACK FOUND!! REMOVING
+[ 2940.064223] PROCESS 409 IS EXITED. REMOVING THE KRPOBES
+[ 2940.069691] REMOVED THE KRPOBES
+
+
+
+

@@ -1,0 +1,289 @@
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/arch/x86/syscalls/syscall_32.tbl kernel/arch/x86/syscalls/syscall_32.tbl
+--- kernel2/kernel/arch/x86/syscalls/syscall_32.tbl	2017-06-17 10:44:31.000000000 -0700
++++ kernel/arch/x86/syscalls/syscall_32.tbl	2018-12-02 12:21:29.421165242 -0700
+@@ -365,3 +365,5 @@
+ 356	i386	memfd_create		sys_memfd_create
+ 357	i386	bpf			sys_bpf
+ 358	i386	execveat		sys_execveat			stub32_execveat
++359	i386	insdump			sys_insdump
++360	i386	rmdump			sys_rmdump
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/include/linux/syscalls.h kernel/include/linux/syscalls.h
+--- kernel2/kernel/include/linux/syscalls.h	2017-06-17 10:44:57.000000000 -0700
++++ kernel/include/linux/syscalls.h	2018-12-02 15:32:54.326122304 -0700
+@@ -67,6 +67,8 @@ struct file_handle;
+ struct sigaltstack;
+ union bpf_attr;
+ 
++struct dumpmode_t;
++
+ #include <linux/types.h>
+ #include <linux/aio_abi.h>
+ #include <linux/capability.h>
+@@ -882,4 +884,10 @@ asmlinkage long sys_execveat(int dfd, co
+ 			const char __user *const __user *argv,
+ 			const char __user *const __user *envp, int flags);
+ 
++
++asmlinkage long sys_insdump(const char __user *symbolname, struct dumpmode_t __user * dumpmode);
++
++asmlinkage long sys_rmdump(int dumpid);
++
++
+ #endif
+ddiff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/kernel/exit.c kernel/kernel/exit.c
+--- kernel2/kernel/kernel/exit.c	2017-06-17 10:44:58.000000000 -0700
++++ kernel/kernel/exit.c	2018-12-02 15:21:57.057985017 -0700
+@@ -59,6 +59,8 @@
+ #include <asm/pgtable.h>
+ #include <asm/mmu_context.h>
+ 
++#include <linux/dynamic_dump_stack.h>
++
+ static void exit_mm(struct task_struct *tsk);
+ 
+ static void __unhash_process(struct task_struct *p, bool group_dead)
+@@ -654,7 +656,9 @@ void do_exit(long code)
+ 	struct task_struct *tsk = current;
+ 	int group_dead;
+ 	TASKS_RCU(int tasks_rcu_i);
+-
++#ifdef CONFIG_DYNAMIC_DUMP_STACK
++	remove_krpobes(tsk->pid);
++#endif
+ 	profile_task_exit(tsk);
+ 
+ 	WARN_ON(blk_needs_flush_plug(tsk));
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/lib/dynamic_dump_stack.c kernel/lib/dynamic_dump_stack.c
+--- kernel2/kernel/lib/dynamic_dump_stack.c	1969-12-31 17:00:00.000000000 -0700
++++ kernel/lib/dynamic_dump_stack.c	2018-12-02 15:44:53.109352512 -0700
+@@ -0,0 +1,186 @@
++#include<linux/kernel.h>
++#include<linux/init.h>
++#include<linux/sched.h>
++#include<linux/syscalls.h>
++#include<linux/string.h>
++#include<linux/kprobes.h>
++#include<linux/kallsyms.h>
++#include<linux/module.h>
++#include <linux/types.h>
++#include <linux/slab.h>
++
++#include <linux/dynamic_dump_stack.h>
++
++#define MAX_SYMBOL_LEN 40
++
++int dumpstackid;
++struct list_head dump_stack_list = LIST_HEAD_INIT(dump_stack_list);
++struct dump_stack_struct *node;
++
++struct dump_stack_struct{
++
++	int dumpstackid;
++	char symbol_name[40];
++	struct kprobe p;
++	pid_t pid;
++	pid_t threadgid;
++	int dumpstackmode;
++	struct list_head dlist;
++
++};
++
++struct delete_node {
++	struct list_head listnode;
++	struct list_head* address;	
++};
++
++int remove_krpobes(pid_t pid) {
++
++    
++    struct list_head* iter = NULL;
++    struct dump_stack_struct* struct_iter = NULL;
++
++    struct delete_node *delList, *temp = NULL;
++    struct list_head nodes_to_delete = LIST_HEAD_INIT(nodes_to_delete);
++  
++    pr_info("PROCESS %d IS EXITED. REMOVING THE KRPOBES\n", pid);
++  
++    list_for_each(iter, &dump_stack_list) {
++	struct_iter = list_entry(iter, struct dump_stack_struct, dlist);
++	//pr_info("PROBES - symbol %s pid %d\n", struct_iter->symbol_name, struct_iter->pid);
++	if(struct_iter->pid == pid) {
++		unregister_kprobe(&struct_iter->p);
++		delList = kmalloc(sizeof(struct delete_node), GFP_KERNEL);
++		memset(delList, 0, sizeof(struct delete_node));
++		delList->address = iter;
++		list_add(&delList->listnode, &nodes_to_delete);
++	}
++    }
++     
++   list_for_each(iter, &nodes_to_delete) {
++	temp = list_entry(iter, struct delete_node, listnode);
++	list_del(temp->address);
++   }
++
++    pr_info("REMOVED THE KRPOBES\n");
++    
++    return 1;
++}
++
++int Pre_Handler(struct kprobe *probe, struct pt_regs *regs){
++	
++    struct dump_stack_struct *current_struct;
++    struct task_struct* task = current;
++    pid_t tgid;
++    pid_t pid;
++    tgid = task->tgid;
++    pid = task->pid;
++	
++    current_struct = container_of(probe, struct dump_stack_struct, p);
++
++    if(current_struct->dumpstackmode > 1){   
++   	 dump_stack();
++    }
++    else if(current_struct->dumpstackmode == 0 && pid == current_struct->pid){   
++   	 dump_stack();
++    }
++    else if(current_struct->dumpstackmode == 1 && (pid == current_struct->pid || tgid == current_struct->threadgid)){            
++   	 dump_stack();
++    }
++   	
++    return 0;
++}
++
++
++SYSCALL_DEFINE1(rmdump, int, dumpid){
++
++#ifdef CONFIG_DYNAMIC_DUMP_STACK
++	
++    
++    struct list_head* iter = NULL;
++    bool dump_stack_id_exists = false;
++    struct dump_stack_struct* struct_iter = NULL;
++    struct task_struct* task = current;
++    pid_t pid = task->pid;
++    pr_info("IN THE SYSCALL RMDUMP\n");	
++    list_for_each(iter, &dump_stack_list) {
++	struct_iter = list_entry(iter, struct dump_stack_struct, dlist);
++	if(struct_iter->dumpstackid == dumpid && struct_iter->pid == pid) {
++		dump_stack_id_exists = true;
++		break;
++	}
++    }
++   
++    if(dump_stack_id_exists){
++	printk(KERN_INFO "DUMPSTACK FOUND!! REMOVING\n");
++	unregister_kprobe(&struct_iter->p);
++	list_del(iter);
++    }else{
++	printk(KERN_INFO "DUMPSTACK NOT FOUND\n");
++	return -EINVAL;
++    }
++	return 1;
++#else
++	return 0;
++#endif
++    
++
++}
++
++SYSCALL_DEFINE2(insdump,const char __user *, symbolname, struct dumpmode_t __user *, dumpmode)
++{
++	  	
++#ifdef CONFIG_DYNAMIC_DUMP_STACK
++		
++        unsigned long address;
++	
++	char *symbol_name;
++	struct task_struct* task;
++	struct dumpmode_t input_mode;
++	pid_t tgid;
++ 	pid_t pid;
++	task = current;
++	tgid = task->tgid;
++	pid = task->pid;
++	pr_info("IN THE SYSCALL INSDUMP\n");
++	symbol_name = kmalloc(sizeof(char)*MAX_SYMBOL_LEN, GFP_KERNEL);
++        strncpy_from_user((char *)symbol_name,
++				symbolname, MAX_SYMBOL_LEN);
++    	address = kallsyms_lookup_name(symbol_name);
++	
++	if(address == 0/* && is_kernel_text(address)*/){
++		printk(KERN_INFO "SYMBOL NOT FOUND\n");
++		return -EINVAL;
++	}
++	
++	printk(KERN_INFO "SYMOBOL FOUND! ADDING THE KRPOBE\n");
++	node = (struct dump_stack_struct *)kmalloc(sizeof(struct dump_stack_struct), GFP_KERNEL);
++	memset(node, 0, sizeof(struct dump_stack_struct));
++	if (copy_from_user(&input_mode, dumpmode,sizeof(input_mode))){
++		return -EFAULT;
++	}
++	printk(KERN_INFO "DUMPSTACK MODE IS - %d\n", input_mode.mode);
++	node->pid = pid;
++	node->threadgid = tgid;
++	node->dumpstackmode = input_mode.mode;
++	snprintf(node->symbol_name, sizeof(char)*MAX_SYMBOL_LEN, "%s", symbol_name);
++	//node->p = (struct kprobe*)kmalloc(sizeof(struct kprobe), GFP_KERNEL);
++	memset(&node->p, 0, sizeof(struct kprobe));
++	node->p.pre_handler = Pre_Handler;
++    	node->p.addr = (kprobe_opcode_t *)address;
++	node->dumpstackid = dumpstackid++;
++
++	if(register_kprobe(&node->p)){
++		printk(KERN_INFO "Error while setting kprobe on address %p\n", (void*)(address));\
++		return -EINVAL;
++	}
++
++	list_add(&node->dlist, &dump_stack_list);
++	printk(KERN_INFO "KPROBE INSERTED\n");
++	return node->dumpstackid;
++#else	
++	return 0;
++	
++#endif
++        
++}
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/include/linux/dynamic_dump_stack.h kernel/include/linux/dynamic_dump_stack.h
+--- kernel2/kernel/include/linux/dynamic_dump_stack.h	1969-12-31 17:00:00.000000000 -0700
++++ kernel/include/linux/dynamic_dump_stack.h	2018-12-02 15:11:11.105969564 -0700
+@@ -0,0 +1,10 @@
++
++
++
++extern struct list_head dump_stack_list;
++
++extern int remove_krpobes(pid_t pid);
++
++struct dumpmode_t {
++	unsigned int mode;
++};
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/lib/Kconfig.debug kernel/lib/Kconfig.debug
+--- kernel2/kernel/lib/Kconfig.debug	2017-06-17 10:44:58.000000000 -0700
++++ kernel/lib/Kconfig.debug	2018-12-02 14:02:14.213286585 -0700
+@@ -1595,6 +1595,14 @@ config TEST_RHASHTABLE
+ 
+ endmenu # runtime tests
+ 
++config DYNAMIC_DUMP_STACK
++	bool "Enable dynamic dump stack"
++	default n
++	help
++	  Enable this option to test the dyanamically adding the dump stack.
++
++	  If unsure, say N.
++
+ config PROVIDE_OHCI1394_DMA_INIT
+ 	bool "Remote debugging over FireWire early on boot"
+ 	depends on PCI && X86
+diff -uprN -X kernel/Documentation/dontdiff kernel2/kernel/lib/Makefile kernel/lib/Makefile
+--- kernel2/kernel/lib/Makefile	2017-06-17 10:44:58.000000000 -0700
++++ kernel/lib/Makefile	2018-12-02 15:14:07.295498933 -0700
+@@ -21,7 +21,7 @@ lib-$(CONFIG_SMP) += cpumask.o
+ 
+ lib-y	+= kobject.o klist.o
+ obj-y	+= lockref.o
+-
++obj-y   += dynamic_dump_stack.o	
+ obj-y += bcd.o div64.o sort.o parser.o halfmd4.o debug_locks.o random32.o \
+ 	 bust_spinlocks.o hexdump.o kasprintf.o bitmap.o scatterlist.o \
+ 	 gcd.o lcm.o list_sort.o uuid.o flex_array.o iovec.o clz_ctz.o \
